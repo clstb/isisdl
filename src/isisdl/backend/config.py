@@ -626,10 +626,18 @@ For example:
 def make_subdirs_prompt() -> None:
     clear()
 
-    print("""Do you want to create subdirectories in the course directory?
+    print("""Do you want to organize files into subdirectories?
 
-If enabled, things like assignments get their own directory containing all files.
-Otherwise the files are stored along with all others in the root directory of the course.
+If enabled, files will be organized by week/section when available.
+Related materials (videos, slides, assignments) are grouped together:
+  Example: CourseName/Week 1 - Introduction/lecture.mp4
+  Example: CourseName/Week 1 - Introduction/slides.pdf
+
+Files without a week use media type folders:
+  Example: CourseName/Documents/standalone.pdf
+
+If disabled, all files will be stored directly in the course root directory.
+  Example: CourseName/lecture.mp4
 """)
 
     prev_choice = config.make_subdirs
@@ -739,6 +747,7 @@ def init_wizard() -> None:
     update_policy_prompt()
     filename_prompt()
     full_filename_prompt()
+    make_subdirs_prompt()
     timer_prompt()
     telemetry_data_prompt()
 

@@ -52,6 +52,30 @@ Once you open any file in the `~/isisdl` directory, this download will be priori
 This is especially useful, if you either don't want to download all video files, but still be able to view them
 with `vlc` (see the `--stream` option), or if you want to start watching videos while the download is still running.
 
+### Week-based organization
+
+Files are automatically organized by week/section when subdirectories are enabled. This groups related materials (videos, slides, assignments) together:
+
+```
+[Course Name]/
+├── Week 1: Introduction/
+│   ├── slides.pdf
+│   ├── lecture.mp4
+│   └── assignment.pdf
+├── Week 2: Advanced Topics/
+│   ├── slides.pdf
+│   └── lecture.mp4
+└── Documents/              # Only for files without a week
+    └── standalone.pdf
+```
+
+Benefits:
+- Related materials for each week are together
+- Navigate by week rather than by media type
+- Cleaner directory structure
+
+Files without a week assignment use media type folders (Documents/, Videos/, Extern/) at the course root level.
+
 ## Installation
 
 ### Linux

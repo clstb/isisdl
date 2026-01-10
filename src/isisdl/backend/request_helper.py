@@ -171,10 +171,27 @@ class PreMediaContainer:
 
     __slots__ = tuple(__annotations__)
 
-    def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None):
-        relative_location = (relative_location or media_type.dir_name).strip("/")
+    def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None, week_name: Optional[str] = None):
+        # Build the relative location path, including week if provided
+        path_parts = []
+        
+        # Add week name if provided and subdirs are enabled
+        if week_name and config.make_subdirs:
+            # Files go directly in week folder, no media type subfolder needed
+            path_parts.append(sanitize_name(week_name, True))
+        else:
+            # No week: use media type directory (Videos/, Documents/, Extern/)
+            # Add the media type directory or custom relative location
+            if relative_location:
+                path_parts.append(relative_location)
+            elif media_type.dir_name:
+                path_parts.append(media_type.dir_name)
+        
+        # Join parts and normalize
         if config.make_subdirs is False:
             relative_location = ""
+        else:
+            relative_location = "/".join(path_parts).strip("/")
 
         self.url = normalize_url(url)
         self._name = name
@@ -183,8 +200,12 @@ class PreMediaContainer:
         self.course = course
         self.media_type = media_type
         self.is_cached = not (database_helper.know_url(url, course.course_id) is True)
-        self.parent_path = course.path(sanitize_name(relative_location, True))
-        self.parent_path.mkdir(exist_ok=True)
+        # Don't sanitize again if we already built the path with sanitized components
+        if week_name and config.make_subdirs:
+            self.parent_path = course.path(relative_location)
+        else:
+            self.parent_path = course.path(sanitize_name(relative_location, True))
+        self.parent_path.mkdir(exist_ok=True, parents=True)
 
     def __str__(self) -> str:
         return f"{self._name}: {self.course}"
@@ -672,6 +693,9 @@ class Course:
             if "modules" not in week:
                 continue
 
+            # Get the week name for grouping files
+            week_name = week.get("name", "")
+
             module: Dict[str, Any]
             for module in week["modules"]:
                 parsed_url_ids.add(str(module["id"]))
@@ -702,9 +726,9 @@ class Course:
                             continue
 
                         if config.follow_links and "type" in file and file["type"] == "url" and extern_ignore.match(file["fileurl"]) is None and isis_ignore.match(file["fileurl"]) is None:
-                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern))
+                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.extern, week_name=week_name))
                         else:
-                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"]))
+                            all_content.append(PreMediaContainer(file["fileurl"], self, MediaType.document, file["filename"], file["filepath"], file["filesize"], file["timemodified"], week_name=week_name))
 
         if config.follow_links is False:
             return all_content
@@ -719,7 +743,7 @@ class Course:
 
             parse = urlparse(link)
             if parse.scheme and parse.netloc and extern_ignore.match(link) is None and isis_ignore.match(link) is None:
-                all_content.append(PreMediaContainer(link, self, MediaType.document if regex_is_isis_document.match(link) is not None else MediaType.extern, None))
+                all_content.append(PreMediaContainer(link, self, MediaType.document if regex_is_isis_document.match(link) is not None else MediaType.extern, None, None, None, None, None))
                 _links.append(link)
 
         return all_content
@@ -939,7 +963,7 @@ class RequestHelper:
                                 all_content.append(
                                     PreMediaContainer(
                                         file["fileurl"], RequestHelper.course_id_mapping[_course["id"]], MediaType.document,
-                                        file["filename"], file["filepath"], file["filesize"], file["timemodified"])
+                                        file["filename"], file["filepath"], file["filesize"], file["timemodified"], None)
                                 )
 
             return all_content
@@ -952,6 +976,24 @@ class RequestHelper:
         try:
             if config.download_videos is False:
                 return []
+
+            # Build a mapping of collection names to their parent week names
+            collection_to_week: Dict[str, str] = {}
+            for course in self.courses:
+                content = self.post_REST("core_course_get_contents", {"courseid": course.course_id})
+                if content is None or isinstance(content, dict) and "exception" in content:
+                    continue
+                
+                for week in content:
+                    if "modules" not in week:
+                        continue
+                    
+                    week_name = week.get("name", "")
+                    for module in week["modules"]:
+                        # Map module names to their parent week
+                        if "name" in module:
+                            module_name = module["name"]
+                            collection_to_week[module_name] = week_name
 
             url = "https://isis.tu-berlin.de/lib/ajax/service.php"
             # Thank you isia-tub for discovering this service.
@@ -973,10 +1015,32 @@ class RequestHelper:
                 assert course.course_id == video["data"]["courseid"]
 
                 videos_json = video["data"]["videos"]
-                video_urls = [item["url"] for item in videos_json]
-                video_names = [item["title"].strip() + item["fileext"] for item in videos_json]
-
-                res.extend([PreMediaContainer(url, course, MediaType.video, name) for url, name in zip(video_urls, video_names)])
+                
+                for item in videos_json:
+                    video_url = item["url"]
+                    video_name = item["title"].strip() + item["fileext"]
+                    
+                    # Get collection name from video API
+                    collection_name = item.get("collectionname", None)
+                    
+                    # Try to map collection name to parent week name
+                    week_name = None
+                    if collection_name:
+                        # First try exact match
+                        week_name = collection_to_week.get(collection_name)
+                        
+                        # If no exact match, try to find a module that contains the collection name
+                        if not week_name:
+                            for module_name, parent_week in collection_to_week.items():
+                                if collection_name in module_name or module_name in collection_name:
+                                    week_name = parent_week
+                                    break
+                        
+                        # If still no match, use the collection name as-is
+                        if not week_name:
+                            week_name = collection_name
+                    
+                    res.append(PreMediaContainer(video_url, course, MediaType.video, video_name, None, None, None, week_name))
 
             return res
 

@@ -300,7 +300,11 @@ whitelist: {'null' if whitelist is None else whitelist}
 blacklist: {'null' if blacklist is None else blacklist}
 
 
-# Should subdirectories be created?
+# Should subdirectories be created? Files will be organized by week/section when available.
+# Related materials (videos, slides, assignments) are grouped together in week folders.
+# Files without a week use media type folders (Documents/, Videos/, Extern/).
+# Example: CourseName/Week 1 - Introduction/lecture.mp4
+# Example: CourseName/Documents/standalone.pdf
 # Possible values {{"true", "false"}}
 make_subdirs: {encode_yaml(make_subdirs)}
 
