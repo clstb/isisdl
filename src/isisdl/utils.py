@@ -302,9 +302,10 @@ blacklist: {'null' if blacklist is None else blacklist}
 
 # Should subdirectories be created? Files will be organized by week/section when available.
 # Related materials (videos, slides, assignments) are grouped together in week folders.
-# Files without a week use media type folders (Documents/, Videos/, Extern/).
+# Files without a week: videos go to Videos/, external links to Extern/, documents to course root.
 # Example: CourseName/Week 1 - Introduction/lecture.mp4
-# Example: CourseName/Documents/standalone.pdf
+# Example: CourseName/Videos/standalone_video.mp4
+# Example: CourseName/standalone_document.pdf
 # Possible values {{"true", "false"}}
 make_subdirs: {encode_yaml(make_subdirs)}
 

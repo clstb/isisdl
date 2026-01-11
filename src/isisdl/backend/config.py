@@ -633,8 +633,9 @@ Related materials (videos, slides, assignments) are grouped together:
   Example: CourseName/Week 1 - Introduction/lecture.mp4
   Example: CourseName/Week 1 - Introduction/slides.pdf
 
-Files without a week use media type folders:
-  Example: CourseName/Documents/standalone.pdf
+Files without a week: videos go to Videos/, external links to Extern/, documents to course root:
+  Example: CourseName/Videos/standalone_video.mp4
+  Example: CourseName/standalone_document.pdf
 
 If disabled, all files will be stored directly in the course root directory.
   Example: CourseName/lecture.mp4

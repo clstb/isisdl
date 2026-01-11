@@ -65,8 +65,11 @@ Files are automatically organized by week/section when subdirectories are enable
 ├── Week 2: Advanced Topics/
 │   ├── slides.pdf
 │   └── lecture.mp4
-└── Documents/              # Only for files without a week
-    └── standalone.pdf
+├── Videos/                 # Videos without a week
+│   └── standalone_video.mp4
+├── Extern/                 # External links without a week
+│   └── external_link.txt
+└── standalone.pdf          # Documents without a week go in course root
 ```
 
 Benefits:
@@ -74,7 +77,7 @@ Benefits:
 - Navigate by week rather than by media type
 - Cleaner directory structure
 
-Files without a week assignment use media type folders (Documents/, Videos/, Extern/) at the course root level.
+Files without a week assignment: videos go to Videos/, external links to Extern/, and documents directly to the course root.
 
 ## Installation
 

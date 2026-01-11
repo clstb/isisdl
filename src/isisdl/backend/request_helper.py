@@ -171,14 +171,16 @@ class PreMediaContainer:
 
     __slots__ = tuple(__annotations__)
 
-    def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None, relative_location: Optional[str] = None, size: Optional[int] = None, time: Optional[int] = None, week_name: Optional[str] = None):
+    def __init__(self, url: str, course: Course, media_type: MediaType, name: Optional[str] = None,
+                 relative_location: Optional[str] = None, size: Optional[int] = None,
+                 time: Optional[int] = None, week_name: Optional[str] = None):
         # Build the relative location path, including week if provided
         path_parts = []
-        
+
         # Add week name if provided and subdirs are enabled
         if week_name and config.make_subdirs:
             # Files go directly in week folder, no media type subfolder needed
-            path_parts.append(sanitize_name(week_name, True))
+            path_parts.append(week_name)
         else:
             # No week: use media type directory (Videos/, Documents/, Extern/)
             # Add the media type directory or custom relative location
@@ -186,7 +188,7 @@ class PreMediaContainer:
                 path_parts.append(relative_location)
             elif media_type.dir_name:
                 path_parts.append(media_type.dir_name)
-        
+
         # Join parts and normalize
         if config.make_subdirs is False:
             relative_location = ""
@@ -200,11 +202,8 @@ class PreMediaContainer:
         self.course = course
         self.media_type = media_type
         self.is_cached = not (database_helper.know_url(url, course.course_id) is True)
-        # Don't sanitize again if we already built the path with sanitized components
-        if week_name and config.make_subdirs:
-            self.parent_path = course.path(relative_location)
-        else:
-            self.parent_path = course.path(sanitize_name(relative_location, True))
+        # Always sanitize the relative location before building the parent path
+        self.parent_path = course.path(sanitize_name(relative_location, True))
         self.parent_path.mkdir(exist_ok=True, parents=True)
 
     def __str__(self) -> str:
@@ -977,23 +976,29 @@ class RequestHelper:
             if config.download_videos is False:
                 return []
 
-            # Build a mapping of collection names to their parent week names
-            collection_to_week: Dict[str, str] = {}
-            for course in self.courses:
-                content = self.post_REST("core_course_get_contents", {"courseid": course.course_id})
-                if content is None or isinstance(content, dict) and "exception" in content:
-                    continue
-                
-                for week in content:
-                    if "modules" not in week:
+            # Build a mapping of collection names to their parent week names.
+            # Cache this mapping to avoid redundant API calls on subsequent invocations.
+            if not hasattr(self, "_collection_to_week_cache"):
+                collection_to_week: Dict[str, str] = {}
+                for course in self.courses:
+                    content = self.post_REST("core_course_get_contents", {"courseid": course.course_id})
+                    if content is None or isinstance(content, dict) and "exception" in content:
                         continue
-                    
-                    week_name = week.get("name", "")
-                    for module in week["modules"]:
-                        # Map module names to their parent week
-                        if "name" in module:
-                            module_name = module["name"]
-                            collection_to_week[module_name] = week_name
+
+                    for week in content:
+                        if "modules" not in week:
+                            continue
+
+                        week_name = week.get("name", "")
+                        for module in week["modules"]:
+                            # Map module names to their parent week
+                            if "name" in module:
+                                module_name = module["name"]
+                                collection_to_week[module_name] = week_name
+
+                self._collection_to_week_cache = collection_to_week
+            else:
+                collection_to_week = self._collection_to_week_cache
 
             url = "https://isis.tu-berlin.de/lib/ajax/service.php"
             # Thank you isia-tub for discovering this service.
@@ -1015,31 +1020,41 @@ class RequestHelper:
                 assert course.course_id == video["data"]["courseid"]
 
                 videos_json = video["data"]["videos"]
-                
+
                 for item in videos_json:
                     video_url = item["url"]
                     video_name = item["title"].strip() + item["fileext"]
-                    
+
                     # Get collection name from video API
                     collection_name = item.get("collectionname", None)
-                    
+
                     # Try to map collection name to parent week name
                     week_name = None
                     if collection_name:
                         # First try exact match
                         week_name = collection_to_week.get(collection_name)
-                        
-                        # If no exact match, try to find a module that contains the collection name
+
+                        # If no exact match, try word boundary matching to avoid false positives
+                        # (e.g., "Week 1" shouldn't match "Week 10")
                         if not week_name:
+                            pattern = re.compile(r'\b' + re.escape(collection_name) + r'\b', re.IGNORECASE)
                             for module_name, parent_week in collection_to_week.items():
-                                if collection_name in module_name or module_name in collection_name:
+                                if pattern.search(module_name):
                                     week_name = parent_week
                                     break
-                        
+
+                        # If still no match, try checking if module name appears in collection name
+                        if not week_name:
+                            for module_name, parent_week in collection_to_week.items():
+                                escaped_module = re.escape(module_name)
+                                if re.search(r'\b' + escaped_module + r'\b', collection_name, re.IGNORECASE):
+                                    week_name = parent_week
+                                    break
+
                         # If still no match, use the collection name as-is
                         if not week_name:
                             week_name = collection_name
-                    
+
                     res.append(PreMediaContainer(video_url, course, MediaType.video, video_name, None, None, None, week_name))
 
             return res
