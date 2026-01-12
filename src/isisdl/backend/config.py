@@ -748,7 +748,6 @@ def init_wizard() -> None:
     update_policy_prompt()
     filename_prompt()
     full_filename_prompt()
-    make_subdirs_prompt()
     timer_prompt()
     telemetry_data_prompt()
 

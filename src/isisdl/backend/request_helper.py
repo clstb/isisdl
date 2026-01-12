@@ -439,6 +439,48 @@ class MediaContainer:
             return maybe_container
 
         if actual_size == 0:
+            # Before declaring we need to download, check if a renamed file exists
+            if maybe_container.checksum is not None:
+                # First, try to find a file with matching checksum in the database for this course
+                existing_file_info = database_helper.find_file_by_checksum(maybe_container.checksum, self.course.course_id)
+
+                if existing_file_info is not None:
+                    # Found a file with the same checksum in the database
+                    # Check if it still exists on disk
+                    existing_path = Path(existing_file_info[3])  # location is at index 3
+                    if existing_path.exists() and existing_path != self.path:
+                        try:
+                            # Verify the file actually has the right size and checksum
+                            if existing_path.stat().st_size == self.size:
+                                file_checksum = calculate_local_checksum(existing_path)
+                                if file_checksum == maybe_container.checksum:
+                                    # Found a renamed file! Update our path to point to it
+                                    self.path = existing_path
+                                    self.checksum = file_checksum
+                                    self.dump()
+                                    return False
+                        except (OSError, PermissionError):
+                            # Skip files we can't access
+                            pass
+
+                # Fallback: scan the parent directory for matching files
+                # This handles cases where the database might be out of sync
+                parent_dir = self.path.parent
+                if parent_dir.exists():
+                    for existing_file in parent_dir.iterdir():
+                        if existing_file.is_file() and existing_file != self.path:
+                            try:
+                                if existing_file.stat().st_size == self.size:
+                                    # Size matches, check if checksum matches
+                                    if calculate_local_checksum(existing_file) == maybe_container.checksum:
+                                        # Found a renamed file! Update path and mark as done
+                                        self.path = existing_file
+                                        self.checksum = maybe_container.checksum
+                                        self.dump()
+                                        return False
+                            except (OSError, PermissionError):
+                                # Skip files we can't access
+                                continue
             return True
 
         if self.size == actual_size:

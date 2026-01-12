@@ -187,6 +187,19 @@ class DatabaseHelper:
 
         return set(map(lambda x: str(x[0]), res))
 
+    def find_file_by_checksum(self, checksum: str, course_id: int) -> Union[None, Iterable[Any]]:
+        """Find a file in the database by its checksum and course_id.
+
+        This is useful for detecting renamed files that have the same content.
+        Returns the file info tuple if found, None otherwise.
+        """
+        with self.lock:
+            res = self.cur.execute("""
+                SELECT * FROM fileinfo WHERE checksum = ? AND course_id = ?
+            """, (checksum, course_id)).fetchone()
+
+        return cast(Union[None, Iterable[Any]], res)
+
     def know_url(self, url: str, course_id: int) -> Union[bool, Iterable[Any]]:
         if url in self._bad_urls:
             return False
